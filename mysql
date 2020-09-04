@@ -1,0 +1,242 @@
+#!/usr/bin/bash
+#source DBMS.sh
+
+echo "------------------------------------------------------------------"
+echo "Welcome to the MySQLdb monitor"
+echo "Syntax is almost similar to MYSQL commands "
+echo "( show , use , drop , create database )"
+echo "  "
+echo "BUT, I have small diffrences in : "
+echo "	'create table tName : col_name1 col_name2..'"
+echo "	'select all from tName'"
+echo "	'select from tName : KeyValue'"
+echo "	'delete from tName : KeyValue'"
+echo "	'insert into tName : value1 value2..'"
+echo "		and you have to insert values for each predefined column"
+echo "  "
+echo "You have to take care of any 'SPACE' it does matter here"
+echo "and ,'case senstive' : every command here has to be LOWER CASE "
+echo "Type 'exit' if you want to quit..."
+echo "  "
+echo "Author : nesreen khalid , IOT track"
+echo "------------------------------------------------------------------"
+
+arr=[]
+
+connectedDB='none'
+
+while true
+do
+	echo " "
+	read -p "MySQLdb [($connectedDB)]> " -a arr input 
+	inputLen=${#arr[@]}
+
+	if [ ${arr[0]} = show ]; then
+		if [ ${arr[1]} = databases ]; then
+			dir="./DataBase"
+			if [ $connectedDB != 'none' ];then
+				dir="../"
+			fi
+			echo "---------------"
+			echo " DataBases     "
+			echo "---------------"
+			ls -1 $dir
+			echo "---------------"
+		elif [ ${arr[1]} = tables ]; then
+			if [ $connectedDB != 'none' ];then
+				echo "-------------"
+				echo " Tables	   "
+				echo "-------------"
+				ls
+				echo "-------------"
+			else echo "No database selected"
+			fi
+		else echo "Syntax Error , check out notes in the begin "
+		fi
+
+	elif [ ${arr[0]} = use ]; then
+		name=${arr[1]}
+		if [ -n $name ]; then
+			dir="./DataBase/${arr[1]}"
+			if [ $connectedDB != 'none' ];then
+				dir="../${arr[1]}"
+			fi
+			cd $dir
+			if [ $? -eq 0 ]; then
+				connectedDB=${arr[1]}
+			else echo "Unknown database ${arr[1]}"
+			fi
+		else echo "Syntax Error , check out notes in the begin "
+		fi
+
+	elif [ ${arr[0]} = drop ]; then	
+		name=${arr[2]}
+		let res=0		
+		if [ ${arr[1]} = database -a -n $name ]; then 
+			dir="./DataBase/$name"
+			if [ $connectedDB = $name ]; then
+				cd ../../				
+				connectedDB='none'
+			elif [  $connectedDB != 'none' ]; then 
+				dir="../$name"
+			fi
+			rm -R $dir
+			res=$?
+
+		elif [ ${arr[1]} = table -a -n $name ]; then
+			if [  $connectedDB != 'none' ]; then
+				rm  $name
+				res=$?
+			
+			else echo "No database selected"
+			fi
+		else echo "Syntax Error , check out notes in the begin "
+		fi
+
+		if [ $res -ne 0 ]; then
+			echo "Unknown ${arr[1]} $name"
+		else echo "${arr[1]} deleted successfully"
+		fi
+
+	elif [ ${arr[0]} = create ]; then
+		name=${arr[2]}
+		if [ ${arr[1]} = database -a -n $name ]; then
+			dir="./DataBase/$name"
+			if [  $connectedDB != 'none' ]; then 
+				dir="../$name"
+			fi
+			test -d $dir
+			if [ $? -ne 0 ]; then
+				mkdir -p $dir
+				echo "Database created successfully"
+			else echo "Can't create database $name; database exists"
+			fi
+
+		elif [ ${arr[1]} = table -a $connectedDB != 'none' ]; then
+			if [ $inputLen -ge 5 ]; then
+				test -f $name
+				if [ $? -ne 0 ]; then									
+					touch $name			
+						let NCol=$inputLen-4
+						line="$name,$NCol"
+						echo $line >> $name
+						line=${arr[4]}	
+						i=5
+						while [ $i -lt $inputLen ] 
+						do
+							line="$line,${arr[$i]}" 
+							let i=$i+1
+						done
+						echo $line >> $name
+						echo "Table created successfully"							
+				else echo "Can't create table $name; database exists"
+				fi
+			else echo "Syntax Error , check out notes in the begin "
+			fi
+		else echo "Syntax Error , check out notes in the begin "
+		fi
+
+	elif [ ${arr[0]} = insert ]; then
+		tName=${arr[2]}
+		inCom="${arr[1]},${arr[3]}"
+		reqCom="into,:"
+		if [ "$inCom" = "$reqCom" ]; then
+			test -f $tName
+			if [ $? -eq 0 -a $connectedDB != 'none' ]; then					
+				let NCol=`sed -n '1p' $tName | cut -f2 -d,`
+				let NVal=$inputLen-4
+				if [ $NCol -eq $NVal ]; then
+					line=${arr[4]}	
+					i=5
+					while [ $i -lt $inputLen ] 
+					do
+						line="$line,${arr[$i]}" 
+						let i=$i+1
+					done
+					echo $line >> $tName
+					echo "Record inserted successfully"
+				else echo "Syntax Error : required $NCol values"
+				fi											
+			else echo "table $tName not exist"
+			fi
+		else echo "Syntax Error , check out notes in the begin "
+		fi
+
+	
+	elif [ ${arr[0]} = delete ]; then
+		tName=${arr[2]}
+		value=${arr[4]}
+		inCom="${arr[1]},${arr[3]}"
+		reqCom="from,:"
+
+		if [ "$inCom" = "$reqCom" ]; then
+			test -f $tName
+			if [ $? -eq 0 -a $connectedDB != 'none' ]; then					
+				sed -i "/^$value/d" $tName
+				echo "Record deleted successfully "										
+			else echo "table $tName not exist"
+			fi
+		else echo "Syntax Error , check out notes in the begin "
+		fi
+
+	elif [ "${arr[0]},${arr[1]},${arr[2]}" = select,all,from ]; then
+		tName=${arr[3]}
+		test -f $tName
+		if [ $? -eq 0 -a $connectedDB != 'none' ]; then
+			cols='columns : '
+			NCol=`sed -n '1p' $tName | cut -d, -f2`
+			i=1
+			while [ $i -le $NCol ]
+			do
+				cols="$cols	|	`sed -n '2p' $tName | cut -d, -f$i`"
+				let i=$i+1
+			done
+			echo "-----------------------------------------------------------------------------------------"
+			echo " $cols"
+			echo "-----------------------------------------------------------------------------------------"	
+			awk -F, '{if(NR>2){ printf"  record : 	|"; i=1; while(i<=NF){printf"\t%s\t|",$i; i++; }printf"\n"}}' $tName
+#awk -F, '{if(NR>2){ printf"  record :   |   "; i=1; while(i<=NF){printf"%s\t|",$i; i++; }printf"\n"}}' .t
+		else echo "table $tName not exist"
+		fi	
+
+	elif [ ${arr[0]} = select ]; then
+
+		tName=${arr[2]}
+		value=${arr[4]}
+		inCom="${arr[1]},${arr[3]}"
+		reqCom="from,:"
+		
+		if [ "$inCom" = "$reqCom" ]; then
+			test -f $tName
+			if [ $? -eq 0 -a $connectedDB != 'none' ]; then
+				NCol=`sed -n '1p' $tName | cut -d, -f2`
+				i=1
+				cols='columns : '
+				line=' record : '
+				while [ $i -le $NCol ]
+				do
+					cols="$cols	|	`sed -n '2p' $tName | cut -d, -f$i`"
+					line="$line	|	`sed -n "/^$value/p" $tName  | cut -d, -f$i`"
+					let i=$i+1
+				done 
+				echo "-----------------------------------------------------------------------------------------"
+				echo " $cols"
+				echo "-----------------------------------------------------------------------------------------"
+				echo " $line"
+				echo "-----------------------------------------------------------------------------------------"
+			else echo "table $tName not exist"
+			fi
+		else echo "Syntax Error , check out notes in the begin "
+		fi
+
+	elif [ ${arr[0]} = exit ]; then
+		if [ $connectedDB != 'none' ]; then
+			cd ../../
+		fi
+		break 2;
+	else echo "Syntax Error , check out notes in the begin  "
+	fi
+done
+
+
+
